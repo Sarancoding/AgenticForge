@@ -4,6 +4,8 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 httpx==0.28.1
+gunicorn==23.0.0
+asgi-lifespan==2.1.0
 
 # ─── Agent Framework ──────────────────────────────────────────────
 langgraph==0.3.8
@@ -18,13 +20,26 @@ openai==1.62.0
 sentence-transformers==3.4.1
 numpy==2.2.2
 
+# ─── Observability & Tracing ──────────────────────────────────────
+langsmith==0.3.11
+arize-phoenix==9.2.0
+opentelemetry-sdk==1.29.0
+opentelemetry-api==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0
+
 # ─── Streaming UI ─────────────────────────────────────────────────
 streamlit==1.42.0
 streamlit-extras==0.6.0
+plotly==5.25.0
+pandas==2.2.3
 
 # ─── Event Handling ───────────────────────────────────────────────
 redis==5.2.1
 aio-pika==9.5.3
+
+# ─── PDF Generation ───────────────────────────────────────────────
+fpdf2==2.8.1
+markdown==3.7.0
 
 # ─── Utilities ────────────────────────────────────────────────────
 python-dotenv==1.0.1
@@ -37,7 +52,3 @@ pytest==8.3.4
 pytest-asyncio==0.25.3
 pytest-mock==3.14.0
 pytest-cov==6.0.0
-
-# ─── Production ───────────────────────────────────────────────────
-gunicorn==23.0.0
-asgi-lifespan==2.1.0
