@@ -1,0 +1,43 @@
+# ─── Core Backend ──────────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+httpx==0.28.1
+
+# ─── Agent Framework ──────────────────────────────────────────────
+langgraph==0.3.8
+langchain-core==0.3.35
+langchain-openai==0.3.7
+langchain-anthropic==0.3.7
+langchain-community==0.3.19
+
+# ─── Vector Store & Memory ────────────────────────────────────────
+chromadb==1.10.4
+openai==1.62.0
+sentence-transformers==3.4.1
+numpy==2.2.2
+
+# ─── Streaming UI ─────────────────────────────────────────────────
+streamlit==1.42.0
+streamlit-extras==0.6.0
+
+# ─── Event Handling ───────────────────────────────────────────────
+redis==5.2.1
+aio-pika==9.5.3
+
+# ─── Utilities ────────────────────────────────────────────────────
+python-dotenv==1.0.1
+pyyaml==6.0.2
+rich==13.9.4
+orjson==3.10.14
+
+# ─── Testing ──────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.25.3
+pytest-mock==3.14.0
+pytest-cov==6.0.0
+
+# ─── Production ───────────────────────────────────────────────────
+gunicorn==23.0.0
+asgi-lifespan==2.1.0

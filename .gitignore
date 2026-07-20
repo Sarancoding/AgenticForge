@@ -1,0 +1,97 @@
+# ─── Python Bytecode & Build ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ─── Virtual Environments ───────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+virtualenv/
+
+# ─── Environment & Secrets ──────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+*.cert
+*.secret
+service_account.json
+
+# ─── IDE & Editor ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-workspace
+*.sublime-project
+
+# ─── Logs & Debug ───────────────────────────────────────────────────
+*.log
+logs/
+*.debug
+crashlytics-*
+
+# ─── Large Model Weights & Data ────────────────────────────────────
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+model_weights/
+local_vector_store/
+*.index
+*.parquet
+*.arrow
+
+# ─── Vector DB & Local Storage ─────────────────────────────────────
+chroma_data/
+qdrant_storage/
+weaviate_data/
+milvus_data/
+pinecone_export/
+
+# ─── Jupyter Notebook Checkpoints ──────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ─── Testing & Coverage ────────────────────────────────────────────
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+test_results/
+*.coverage.*
+.mypy_cache/
+.ruff_cache/
+
+# ─── Docker ────────────────────────────────────────────────────────
+.docker/
+docker-compose.override.yml
+
+# ─── OS Files ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.dmg
+*.app
+
+# ─── Misc ───────────────────────────────────────────────────────────
+*.tmp
+*.temp
+tmp/
+temp/
+*~
+*.part
+*.bak
