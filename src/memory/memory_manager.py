@@ -9,6 +9,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
+from src.security.data_protection import pii_masker
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,9 @@ class HybridMemory:
             session_id: Session identifier for cross-session filtering.
         """
         import time
+
+        # Enterprise Data Protection: Mask PII/sensitive data in memory entries
+        content = pii_masker.mask(content)
 
         timestamp = time.time()
         embedding = self._compute_embedding(content)

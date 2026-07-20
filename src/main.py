@@ -8,8 +8,15 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from src.security import (
+    verify_api_key,
+    require_role,
+    pii_masker,
+    safe_math_evaluator,
+)
 
 from src.agents.router import CostAwareRouter
 from src.agents.react_agent import ReActAgent
@@ -80,6 +87,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Register CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register secure HTTP headers middleware
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 # Register observability middleware
 app.add_middleware(
     ObservabilityMiddleware,
@@ -98,7 +125,7 @@ def _register_default_tools() -> None:
 
     def calculator(expression: str) -> str:
         try:
-            return str(eval(expression, {"__builtins__": {}}, {}))  # noqa: S307
+            return str(safe_math_evaluator.evaluate(expression))
         except Exception as e:
             return f"[Error: {e}]"
 
@@ -217,15 +244,18 @@ async def health():
 
 
 @app.post("/api/agents/route")
-async def route_task(req: RouteRequest):
-    decision = router.route(task=req.task, agent_type=req.agent_type, budget=req.budget)
+async def route_task(req: RouteRequest, role: str = Depends(require_role("viewer"))):
+    sanitized_task = pii_masker.mask(req.task)
+    decision = router.route(task=sanitized_task, agent_type=req.agent_type, budget=req.budget)
     return decision.model_dump()
 
 
 @app.post("/api/agents/react")
-async def run_react(req: ReActRequest):
-    result = react_agent.run(task=req.task, context=req.context)
-    memory.add(content=f"User: {req.task}\nAssistant: {result.output}", importance=0.8, session_id="react_default")
+async def run_react(req: ReActRequest, role: str = Depends(require_role("operator"))):
+    sanitized_task = pii_masker.mask(req.task)
+    sanitized_context = pii_masker.mask(req.context) if req.context else ""
+    result = react_agent.run(task=sanitized_task, context=sanitized_context)
+    memory.add(content=f"User: {sanitized_task}\nAssistant: {result.output}", importance=0.8, session_id="react_default")
     metrics.record_execution(__import__("src.observability.metrics", fromlist=["AgentMetricsSnapshot"]).AgentMetricsSnapshot(
         agent_type="react",
         latency_ms=100.0,
@@ -244,9 +274,10 @@ async def run_react(req: ReActRequest):
 
 
 @app.post("/api/agents/debate")
-async def run_debate(req: DebateRequest):
+async def run_debate(req: DebateRequest, role: str = Depends(require_role("operator"))):
     debate_agent.num_proposers = req.num_proposers
-    result = debate_agent.debate(task=req.task)
+    sanitized_task = pii_masker.mask(req.task)
+    result = debate_agent.debate(task=sanitized_task)
     return {
         "consensus": result.consensus_output,
         "proposals": [{"agent_id": p.agent_id, "content": p.content, "score": p.critic_score, "votes": p.votes}
@@ -256,8 +287,9 @@ async def run_debate(req: DebateRequest):
 
 
 @app.post("/api/agents/reflect")
-async def run_reflection(req: ReflectRequest):
-    result = reflective_agent.reflect(task=req.task)
+async def run_reflection(req: ReflectRequest, role: str = Depends(require_role("operator"))):
+    sanitized_task = pii_masker.mask(req.task)
+    result = reflective_agent.reflect(task=sanitized_task)
     return {
         "final_output": result.final_output, "improvement": result.improvement,
         "iterations": len(result.metrics),
@@ -266,11 +298,12 @@ async def run_reflection(req: ReflectRequest):
 
 
 @app.post("/api/agents/crew")
-async def run_crew(req: CrewRequest):
+async def run_crew(req: CrewRequest, role: str = Depends(require_role("operator"))):
+    sanitized_task = pii_masker.mask(req.task)
     if req.members:
         for mem in req.members:
             crew_agent.add_member(name=mem, role=mem, expertise=["general"])
-    result = crew_agent.execute(task=req.task)
+    result = crew_agent.execute(task=sanitized_task)
     return {
         "final_output": result.final_output,
         "manager_notes": result.manager_notes,
@@ -279,8 +312,9 @@ async def run_crew(req: CrewRequest):
 
 
 @app.post("/api/agents/workflow")
-async def run_workflow(req: WorkflowRequest):
-    result = workflow_agent.run(task=req.task, pattern=req.pattern)
+async def run_workflow(req: WorkflowRequest, role: str = Depends(require_role("operator"))):
+    sanitized_task = pii_masker.mask(req.task)
+    result = workflow_agent.run(task=sanitized_task, pattern=req.pattern)
     return {
         "final_output": result.final_output,
         "converged": result.converged,
@@ -290,7 +324,7 @@ async def run_workflow(req: WorkflowRequest):
 
 
 @app.post("/api/agents/events")
-async def process_event(req: EventRequest):
+async def process_event(req: EventRequest, role: str = Depends(require_role("operator"))):
     event = event_agent.create_event(payload=req.payload)
     result = await event_agent.process_event(event)
     return {"event_id": result.event_id, "success": result.success, "output": result.output,
@@ -301,13 +335,13 @@ async def process_event(req: EventRequest):
 
 
 @app.get("/api/observability/metrics")
-async def get_metrics(agent_type: str | None = None):
+async def get_metrics(agent_type: str | None = None, role: str = Depends(require_role("viewer"))):
     """Get current metrics summary."""
     return metrics.summary(agent_type)
 
 
 @app.get("/api/observability/alerts")
-async def get_alerts():
+async def get_alerts(role: str = Depends(require_role("viewer"))):
     """Get recent and active alerts."""
     return {
         "active": [{"rule": a.rule_name, "severity": a.severity.value, "message": a.message, "timestamp": a.timestamp}
@@ -320,18 +354,18 @@ async def get_alerts():
 
 
 @app.post("/api/observability/alerts/acknowledge")
-async def acknowledge_alert(index: int):
+async def acknowledge_alert(index: int, role: str = Depends(require_role("operator"))):
     success = alerts.acknowledge(index)
     return {"success": success}
 
 
 @app.get("/api/observability/rollback/snapshots")
-async def list_snapshots():
+async def list_snapshots(role: str = Depends(require_role("admin"))):
     return {"snapshots": rollback.list_snapshots()}
 
 
 @app.post("/api/observability/rollback/snapshot")
-async def take_snapshot(description: str = ""):
+async def take_snapshot(description: str = "", role: str = Depends(require_role("admin"))):
     config = {
         "tools": orchestrator.list_tools(),
         "agents": ["react", "debate", "reflective", "event", "crew", "workflow"],
@@ -342,7 +376,7 @@ async def take_snapshot(description: str = ""):
 
 
 @app.post("/api/observability/rollback/to/{snapshot_id}")
-async def rollback_to(snapshot_id: str):
+async def rollback_to(snapshot_id: str, role: str = Depends(require_role("admin"))):
     config = rollback.rollback_to(snapshot_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Snapshot not found")
@@ -350,7 +384,7 @@ async def rollback_to(snapshot_id: str):
 
 
 @app.get("/api/observability/canary")
-async def get_canaries():
+async def get_canaries(role: str = Depends(require_role("viewer"))):
     return {"active": canary.active_canaries}
 
 
@@ -358,13 +392,15 @@ async def get_canaries():
 
 
 @app.post("/api/memory/add")
-async def add_memory(req: MemoryAddRequest):
-    memory.add(content=req.content, importance=req.importance, session_id=req.session_id)
+async def add_memory(req: MemoryAddRequest, role: str = Depends(require_role("operator"))):
+    # Mask input content for PII protection
+    sanitized_content = pii_masker.mask(req.content)
+    memory.add(content=sanitized_content, importance=req.importance, session_id=req.session_id)
     return {"status": "ok"}
 
 
 @app.post("/api/memory/query")
-async def query_memory(req: MemoryQueryRequest):
+async def query_memory(req: MemoryQueryRequest, role: str = Depends(require_role("viewer"))):
     result = memory.search(query=req.query, top_k=req.top_k, session_id=req.session_id)
     return {"query": req.query,
             "results": [{"content": item.content, "score": result.scores[i] if i < len(result.scores) else 0.0}
@@ -375,11 +411,13 @@ async def query_memory(req: MemoryQueryRequest):
 
 
 @app.post("/api/workflows/hitl/analyze")
-async def hitl_analyze(req: HITLRequest):
+async def hitl_analyze(req: HITLRequest, role: str = Depends(require_role("operator"))):
     wf = HITLWorkflow()
     workflow_id = f"wf_{len(workflows) + 1}"
     workflows[workflow_id] = wf
-    result = wf.run(task=req.task, agent_output=req.agent_output, confidence=req.confidence,
+    sanitized_task = pii_masker.mask(req.task)
+    sanitized_output = pii_masker.mask(req.agent_output)
+    result = wf.run(task=sanitized_task, agent_output=sanitized_output, confidence=req.confidence,
                     uncertainty_reason=req.uncertainty_reason)
     return {"workflow_id": workflow_id, "success": result.success, "output": result.output,
             "final_state": result.final_state, "needs_human_input": wf.current_state == "paused",
@@ -387,12 +425,13 @@ async def hitl_analyze(req: HITLRequest):
 
 
 @app.post("/api/workflows/hitl/input")
-async def hitl_input(req: HumanInputRequest):
+async def hitl_input(req: HumanInputRequest, role: str = Depends(require_role("operator"))):
     wf = workflows.get(req.workflow_id)
     if not wf:
         raise HTTPException(status_code=404, detail=f"Workflow '{req.workflow_id}' not found.")
     try:
-        wf.provide_human_input(approved=req.approved, input_text=req.input_text)
+        sanitized_input = pii_masker.mask(req.input_text) if req.input_text else None
+        wf.provide_human_input(approved=req.approved, input_text=sanitized_input)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"workflow_id": req.workflow_id, "final_state": wf.current_state,
@@ -403,13 +442,37 @@ async def hitl_input(req: HumanInputRequest):
 
 
 @app.get("/api/tools")
-async def list_tools():
+async def list_tools(role: str = Depends(require_role("viewer"))):
     return {"tools": orchestrator.list_tools(), "count": orchestrator.tool_count}
 
 
 @app.post("/api/tools/execute")
-async def execute_tool(name: str, **kwargs):
-    result = await orchestrator.execute_tool(name, **kwargs)
+async def execute_tool(
+    name: str,
+    request: Request,
+    role: str = Depends(require_role("operator")),
+):
+    # Retrieve arguments dynamically from query parameters and JSON body
+    tool_args = dict(request.query_params)
+    tool_args.pop("name", None)
+
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            tool_args.update(body)
+    except Exception:
+        pass
+
+    # Enforce permission level verification dynamically
+    tool = orchestrator.get_tool(name)
+    if tool:
+        from src.security import security_manager
+        if not security_manager.is_authorized(role, tool.permission_level):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Insufficient permissions to execute tool '{name}'. Tool requires level '{tool.permission_level}', user has '{role}'."
+            )
+    result = await orchestrator.execute_tool(name, **tool_args)
     return {"success": result.success, "output": result.output, "error": result.error}
 
 
