@@ -84,7 +84,7 @@ class CostAwareRouter:
             kw in task.lower()
             for kw in ("code", "debug", "architecture", "implement", "analyze", "deploy", "optimize")
         )
-        has_multiple_steps = task.count("\n") > 2 or task.count(".") > 3
+        has_multiple_steps = task.count("\n") > 2 or task.count(".") > 2
 
         if word_count < 20 and not has_technical:
             return ComplexityTier.LOW

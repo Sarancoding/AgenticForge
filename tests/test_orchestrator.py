@@ -30,7 +30,7 @@ class TestToolOrchestrator:
         self.orchestrator.register_tool(
             Tool(name="calculator", description="Math calculations",
                  capabilities=["math"], permission_level="user",
-                 fn=lambda expr: str(eval(expr)))  # noqa: S307
+                 fn=lambda expression: str(eval(expression)))  # noqa: S307
         )
 
     def test_register_tool(self) -> None:
@@ -56,15 +56,17 @@ class TestToolOrchestrator:
         winner = self.orchestrator.resolve_conflict(tools, "search for records")
         assert winner.name == "search_db", f"Expected search_db, got {winner.name}"
 
-    def test_execute_tool_success(self) -> None:
+    @pytest.mark.asyncio
+    async def test_execute_tool_success(self) -> None:
         """Executing a registered tool should return a successful result."""
-        result = self.orchestrator.execute_tool("calculator", expression="2+2")
+        result = await self.orchestrator.execute_tool("calculator", expression="2+2")
         assert result.success is True
         assert result.output == "4"
 
-    def test_execute_tool_not_found(self) -> None:
+    @pytest.mark.asyncio
+    async def test_execute_tool_not_found(self) -> None:
         """Executing an unregistered tool should return an error result."""
-        result = self.orchestrator.execute_tool("nonexistent")
+        result = await self.orchestrator.execute_tool("nonexistent")
         assert result.success is False
         assert "not found" in (result.error or "")
 
